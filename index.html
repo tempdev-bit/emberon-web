@@ -1,155 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Emberon PNG Extractor</title>
-  <style>
-    body {
-      background: #1e1e1e;
-      color: #eee;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      padding: 20px;
-      min-height: 100vh;
-      margin: 0;
-    }
-    h1 { margin-bottom: 10px; }
-    #dropzone {
-      border: 2px dashed #666;
-      border-radius: 12px;
-      padding: 40px;
-      text-align: center;
-      width: 80%;
-      max-width: 600px;
-      cursor: pointer;
-      transition: border 0.3s ease;
-    }
-    #dropzone.dragover {
-      border-color: #4caf50;
-      background: #2a2a2a;
-    }
-    #output {
-      margin-top: 20px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: monospace;
-      font-size: 14px;
-      max-width: 90%;
-    }
-    #methods {
-      margin-top: 10px;
-      font-size: 13px;
-      color: #aaa;
-    }
-    .success { color: #4caf50; }
-    .error { color: #f44336; }
-  </style>
+<meta charset="UTF-8">
+<title>Emberon PNG Extractor</title>
+<style>
+  body {
+    background: #1e1e1e;
+    color: #eee;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+    margin: 0;
+  }
+  h1 { margin-bottom: 10px; }
+  #dropzone {
+    border: 2px dashed #666;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    width: 80%;
+    max-width: 600px;
+    cursor: pointer;
+    transition: border 0.3s ease, background 0.3s ease;
+  }
+  #dropzone.dragover {
+    border-color: #4caf50;
+    background: #2a2a2a;
+  }
+  #output {
+    margin-top: 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 14px;
+    max-width: 90%;
+  }
+  #methods {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #aaa;
+  }
+  .success { color: #4caf50; }
+  .error { color: #f44336; }
+</style>
 </head>
 <body>
-  <h1>Emberon PNG Extractor</h1>
-  <div id="dropzone">⬇️ Drop an Emberon PNG here or click to select</div>
-  <input type="file" id="fileInput" accept="image/png" style="display:none;" />
-  <div id="methods">
-    Supported methods: <br>
-    • zlib / deflate (Pako) ✅ <br>
-    • gzip (Pako) ✅ <br>
-    • lzma (.lzma) ⚠️ <br>
-    • xz (.xz) ⚠️ <br>
-    • zstd (.zst) ⚠️
-  </div>
-  <div id="output"></div>
+<h1>Emberon PNG Extractor</h1>
+<div id="dropzone">⬇️ Drop an Emberon PNG here or click to select</div>
+<input type="file" id="fileInput" accept="image/png" style="display:none;">
+<div id="methods">
+  Supported methods:<br>
+  • zlib / deflate (Pako) ✅<br>
+  • gzip (Pako) ✅<br>
+  • lzma (.lzma) ⚠️<br>
+  • xz (.xz) ⚠️<br>
+  • zstd (.zst) ⚠️
+</div>
+<div id="output"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 
-  <script>
-    const dropzone = document.getElementById("dropzone");
-    const fileInput = document.getElementById("fileInput");
-    const output = document.getElementById("output");
+<script>
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const output = document.getElementById("output");
 
-    dropzone.addEventListener("click", () => fileInput.click());
-    dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
-    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
-    dropzone.addEventListener("drop", e => {
-      e.preventDefault();
-      dropzone.classList.remove("dragover");
-      if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-    });
-    fileInput.addEventListener("change", e => { if(e.target.files.length) handleFile(e.target.files[0]); });
+dropzone.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("dragover");
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if(e.target.files.length) handleFile(e.target.files[0]); });
 
-    function handleFile(file) {
-      output.textContent = "";
-      const reader = new FileReader();
-      reader.onload = ev => {
-        try {
-          const data = new Uint8Array(ev.target.result);
-          const img = UPNG.decode(data.buffer);
-          const rgba = UPNG.toRGBA8(img)[0];
+function handleFile(file) {
+  output.textContent = "";
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = new Uint8Array(ev.target.result);
+      const img = UPNG.decode(data.buffer);
+      const rgba = UPNG.toRGBA8(img)[0];
 
-          // Emberon header (first 256 bytes)
-          const header = rgba.slice(0, 256);
-          const magicBytes = header.slice(0, 8);
-          const magicText = new TextDecoder().decode(magicBytes);
-          const hex = Array.from(magicBytes).map(b => b.toString(16).padStart(2, "0"));
+      // Copy first 256 bytes of pixel data as Emberon header
+      const headerSlice = new Uint8Array(rgba.slice(0, 256));
+      const magicBytes = headerSlice.slice(0, 8);
+      const magicText = new TextDecoder().decode(magicBytes);
 
-          if(magicText !== "EMBERON3") {
-            output.innerHTML = `<span class="error">❌ Invalid magic number.</span> Expected "EMBERON3" but got text="${magicText}" hex=[${hex.join(" ")}]`;
-            return;
-          }
+      if(magicText !== "EMBERON3") {
+        output.innerHTML = `<span class="error">❌ Invalid magic number.</span> Got "${magicText}"`;
+        return;
+      }
 
-          // Header fields (for debug)
-          const version = header[8];
-          const compression = header[9];
-          // Create a DataView for just the 256-byte header slice
-          const headerBuffer = header.buffer.slice(header.byteOffset, header.byteOffset + header.byteLength);
-          const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-              
-          const payloadSize = view.getBigUint64(10, false);
-          const uncompressedSize = view.getBigUint64(18, false);
-              
+      const version = headerSlice[8];
+      const compression = headerSlice[9];
 
-          output.innerHTML = `<span class="success">✅ Valid Emberon PNG</span>\nMagic: ${magicText}\nHex: [${hex.join(" ")}]\nVersion: ${version}\nCompression: ${compression}\nPayloadSize: ${payloadSize}\nUncompressedSize: ${uncompressedSize}`;
+      const view = new DataView(headerSlice.buffer);
+      const payloadSize = view.getBigUint64(10, false);
+      const uncompressedSize = view.getBigUint64(18, false);
 
-          // Extract payload after 256-byte header
-          const payload = rgba.subarray(8);
-          let decompressed;
+      output.innerHTML = `<span class="success">✅ Valid Emberon PNG</span>
+Magic: ${magicText}
+Version: ${version}
+Compression: ${compression}
+PayloadSize: ${payloadSize}
+UncompressedSize: ${uncompressedSize}`;
 
-          // Try Pako inflate (zlib/deflate)
-          try {
-            decompressed = pako.inflate(payload);
-          } catch(err) {
-            output.innerHTML += `\n⚠️ Decompression failed (zlib/deflate): ${err.message}`;
-            return;
-          }
+      // Payload = pixel data after 256-byte header
+      const payload = rgba.slice(256);
 
-          // Detect file extension by magic bytes
-          let extension = ".bin";
-          if(decompressed[0]===0x37 && decompressed[1]===0x7A) extension=".7z";
-          else if(decompressed[0]===0xFD && decompressed[1]===0x37) extension=".xz";
-          else if(decompressed[0]===0x28 && decompressed[1]===0xB5) extension=".zst";
-          else if(decompressed[0]===0x5D && decompressed[1]===0x00) extension=".lzma";
+      // Decompress with Pako (zlib/deflate)
+      let decompressed;
+      try {
+        decompressed = pako.inflate(payload);
+      } catch(err) {
+        output.innerHTML += `\n⚠️ Decompression failed (zlib/deflate): ${err.message}`;
+        return;
+      }
 
-          // Download
-          const blob = new Blob([decompressed], { type: "application/octet-stream" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = file.name.replace(/\.[^.]+$/, "") + extension;
-          a.click();
-          URL.revokeObjectURL(url);
+      // Detect file extension
+      let extension = ".bin";
+      if(decompressed[0]===0x37 && decompressed[1]===0x7A) extension=".7z";
+      else if(decompressed[0]===0xFD && decompressed[1]===0x37) extension=".xz";
+      else if(decompressed[0]===0x28 && decompressed[1]===0xB5) extension=".zst";
+      else if(decompressed[0]===0x5D && decompressed[1]===0x00) extension=".lzma";
 
-          output.innerHTML += `\n💾 Downloaded as ${a.download}`;
+      // Download the extracted file
+      const blob = new Blob([decompressed], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name.replace(/\.[^.]+$/, "") + extension;
+      a.click();
+      URL.revokeObjectURL(url);
 
-        } catch(err) {
-          output.innerHTML = `<span class="error">❌ Error:</span> ${err.message}`;
-          console.error(err);
-        }
-      };
-      reader.readAsArrayBuffer(file);
+      output.innerHTML += `\n💾 Downloaded as ${a.download}`;
+
+    } catch(err) {
+      output.innerHTML = `<span class="error">❌ Error:</span> ${err.message}`;
+      console.error(err);
     }
-  </script>
+  };
+  reader.readAsArrayBuffer(file);
+}
+</script>
 </body>
 </html>
