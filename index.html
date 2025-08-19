@@ -11,10 +11,12 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
+      justify-content: flex-start;
+      padding: 20px;
+      min-height: 100vh;
       margin: 0;
     }
+    h1 { margin-bottom: 10px; }
     #dropzone {
       border: 2px dashed #666;
       border-radius: 12px;
@@ -37,15 +39,29 @@
       font-size: 14px;
       max-width: 90%;
     }
+    #methods {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #aaa;
+    }
+    .success { color: #4caf50; }
+    .error { color: #f44336; }
   </style>
 </head>
 <body>
   <h1>Emberon PNG Extractor</h1>
   <div id="dropzone">⬇️ Drop an Emberon PNG here or click to select</div>
   <input type="file" id="fileInput" accept="image/png" style="display:none;" />
+  <div id="methods">
+    Supported methods: <br>
+    • zlib / deflate (Pako) ✅ <br>
+    • gzip (Pako) ✅ <br>
+    • lzma (.lzma) ⚠️ <br>
+    • xz (.xz) ⚠️ <br>
+    • zstd (.zst) ⚠️
+  </div>
   <div id="output"></div>
 
-  <!-- UPNG + Pako -->
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
 
@@ -55,69 +71,68 @@
     const output = document.getElementById("output");
 
     dropzone.addEventListener("click", () => fileInput.click());
-
-    dropzone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      dropzone.classList.add("dragover");
-    });
-
-    dropzone.addEventListener("dragleave", () => {
-      dropzone.classList.remove("dragover");
-    });
-
-    dropzone.addEventListener("drop", (e) => {
+    dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+    dropzone.addEventListener("drop", e => {
       e.preventDefault();
       dropzone.classList.remove("dragover");
-      if (e.dataTransfer.files.length > 0) {
-        handleFile(e.dataTransfer.files[0]);
-      }
+      if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
     });
-
-    fileInput.addEventListener("change", (e) => {
-      if (e.target.files.length > 0) {
-        handleFile(e.target.files[0]);
-      }
-    });
+    fileInput.addEventListener("change", e => { if(e.target.files.length) handleFile(e.target.files[0]); });
 
     function handleFile(file) {
+      output.textContent = "";
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = ev => {
         try {
           const data = new Uint8Array(ev.target.result);
           const img = UPNG.decode(data.buffer);
-          const rgba = UPNG.toRGBA8(img)[0]; // Uint8Array
+          const rgba = UPNG.toRGBA8(img)[0];
 
-          const magicBytes = rgba.slice(0, 8);
+          // Emberon header (first 256 bytes)
+          const header = rgba.slice(0, 256);
+          const magicBytes = header.slice(0, 8);
           const magicText = new TextDecoder().decode(magicBytes);
           const hex = Array.from(magicBytes).map(b => b.toString(16).padStart(2, "0"));
 
-          if (magicText !== "EMBERON3") {
-            output.textContent = `❌ Invalid magic number. Expected "EMBERON3" but got text="${magicText}" hex=[${hex.join(" ")}]`;
+          if(magicText !== "EMBERON3") {
+            output.innerHTML = `<span class="error">❌ Invalid magic number.</span> Expected "EMBERON3" but got text="${magicText}" hex=[${hex.join(" ")}]`;
             return;
           }
 
-          output.textContent = `✅ Valid Emberon PNG\nMagic: ${magicText}\nHex: [${hex.join(" ")}]`;
+          // Header fields (for debug)
+          const version = header[8];
+          const compression = header[9];
+          // Create a DataView for just the 256-byte header slice
+          const headerBuffer = header.buffer.slice(header.byteOffset, header.byteOffset + header.byteLength);
+          const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+              
+          const payloadSize = view.getBigUint64(10, false);
+          const uncompressedSize = view.getBigUint64(18, false);
+              
 
-          // Extract payload (everything after header)
-          const payload = rgba.slice(8);
+          output.innerHTML = `<span class="success">✅ Valid Emberon PNG</span>\nMagic: ${magicText}\nHex: [${hex.join(" ")}]\nVersion: ${version}\nCompression: ${compression}\nPayloadSize: ${payloadSize}\nUncompressedSize: ${uncompressedSize}`;
 
-          // Decompress with pako (zlib/deflate)
+          // Extract payload after 256-byte header
+          const payload = rgba.subarray(8);
           let decompressed;
+
+          // Try Pako inflate (zlib/deflate)
           try {
             decompressed = pako.inflate(payload);
-          } catch (err) {
-            output.textContent += `\n⚠️ Decompression failed: ${err.message}`;
+          } catch(err) {
+            output.innerHTML += `\n⚠️ Decompression failed (zlib/deflate): ${err.message}`;
             return;
           }
 
-          // Detect extension by magic bytes
+          // Detect file extension by magic bytes
           let extension = ".bin";
-          if (decompressed[0] === 0x37 && decompressed[1] === 0x7A) extension = ".7z";
-          else if (decompressed[0] === 0xFD && decompressed[1] === 0x37) extension = ".xz";
-          else if (decompressed[0] === 0x28 && decompressed[1] === 0xB5) extension = ".zst";
-          else if (decompressed[0] === 0x5D && decompressed[1] === 0x00) extension = ".lzma";
+          if(decompressed[0]===0x37 && decompressed[1]===0x7A) extension=".7z";
+          else if(decompressed[0]===0xFD && decompressed[1]===0x37) extension=".xz";
+          else if(decompressed[0]===0x28 && decompressed[1]===0xB5) extension=".zst";
+          else if(decompressed[0]===0x5D && decompressed[1]===0x00) extension=".lzma";
 
-          // Trigger download
+          // Download
           const blob = new Blob([decompressed], { type: "application/octet-stream" });
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -126,9 +141,10 @@
           a.click();
           URL.revokeObjectURL(url);
 
-          output.textContent += `\n💾 Downloaded as ${a.download}`;
-        } catch (err) {
-          output.textContent = "❌ Error: " + err.message;
+          output.innerHTML += `\n💾 Downloaded as ${a.download}`;
+
+        } catch(err) {
+          output.innerHTML = `<span class="error">❌ Error:</span> ${err.message}`;
           console.error(err);
         }
       };
