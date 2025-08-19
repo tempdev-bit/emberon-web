@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Emberon PNG Extractor</title>
+  <style>
+    body {
+      background: #1e1e1e;
+      color: #eee;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #dropzone {
+      border: 2px dashed #666;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      width: 80%;
+      max-width: 600px;
+      cursor: pointer;
+      transition: border 0.3s ease;
+    }
+    #dropzone.dragover {
+      border-color: #4caf50;
+      background: #2a2a2a;
+    }
+    #output {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: monospace;
+      font-size: 14px;
+      max-width: 90%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Emberon PNG Extractor</h1>
+  <div id="dropzone">⬇️ Drop an Emberon PNG here or click to select</div>
+  <input type="file" id="fileInput" accept="image/png" style="display:none;" />
+  <div id="output"></div>
+
+  <!-- UPNG + Pako -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.js"></script>
+
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const output = document.getElementById("output");
+
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
+
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = new Uint8Array(ev.target.result);
+          const img = UPNG.decode(data.buffer);
+          const rgba = UPNG.toRGBA8(img)[0]; // Uint8Array
+
+          const magicBytes = rgba.slice(0, 8);
+          const magicText = new TextDecoder().decode(magicBytes);
+          const hex = Array.from(magicBytes).map(b => b.toString(16).padStart(2, "0"));
+
+          if (magicText !== "EMBERON3") {
+            output.textContent = `❌ Invalid magic number. Expected "EMBERON3" but got text="${magicText}" hex=[${hex.join(" ")}]`;
+            return;
+          }
+
+          output.textContent = `✅ Valid Emberon PNG\nMagic: ${magicText}\nHex: [${hex.join(" ")}]`;
+
+          // Extract payload (everything after header)
+          const payload = rgba.slice(8);
+
+          // Decompress with pako (zlib/deflate)
+          let decompressed;
+          try {
+            decompressed = pako.inflate(payload);
+          } catch (err) {
+            output.textContent += `\n⚠️ Decompression failed: ${err.message}`;
+            return;
+          }
+
+          // Detect extension by magic bytes
+          let extension = ".bin";
+          if (decompressed[0] === 0x37 && decompressed[1] === 0x7A) extension = ".7z";
+          else if (decompressed[0] === 0xFD && decompressed[1] === 0x37) extension = ".xz";
+          else if (decompressed[0] === 0x28 && decompressed[1] === 0xB5) extension = ".zst";
+          else if (decompressed[0] === 0x5D && decompressed[1] === 0x00) extension = ".lzma";
+
+          // Trigger download
+          const blob = new Blob([decompressed], { type: "application/octet-stream" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name.replace(/\.[^.]+$/, "") + extension;
+          a.click();
+          URL.revokeObjectURL(url);
+
+          output.textContent += `\n💾 Downloaded as ${a.download}`;
+        } catch (err) {
+          output.textContent = "❌ Error: " + err.message;
+          console.error(err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  </script>
+</body>
+</html>
