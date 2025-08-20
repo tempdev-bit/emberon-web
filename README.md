@@ -4,14 +4,13 @@
 
 [Emberon Main Project](https://github.com/tempdev-bit/emberon-web)
 
-Emberon Web is an website created to do the same, just in a browser!
+[Emberon Web](https://emberon.pages.dev) is an website created to do the same, just in a browser!
 Everything runs **offline in your browser** using Python (via Pyodide + Pillow).  
 
 ---
 
 ## ✨ Features
 - 100% **lossless** — original file restored exactly  
-- **Runs locally** — no server, no upload  
 - Uses **PNG pixels** as the carrier  
 - Built-in **compression + integrity check**  
 - **Drag & Drop UI**  
@@ -48,7 +47,12 @@ Everything runs **offline in your browser** using Python (via Pyodide + Pillow).
 
 ## 🛡️ Notes
 - Files **never leave your machine**  
-- PNGs are **not encrypted** (just encoded)  
+- PNGs are **not encrypted** (just encoded) 
+
+---
+
+## USAGE OF AI
+ AI was used to generate most of the boiler plate code (around ~70%)
 
 ---
 
