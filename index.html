@@ -1,100 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Emberon PNG Encoder/Decoder</title>
-<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
-<style>
-  body { font-family: sans-serif; padding: 2rem; background: #1e1e1e; color: #eee; }
-  input, button, select { margin-top: 0.5rem; display: block; }
-  #output { margin-top: 1rem; white-space: pre-wrap; }
-</style>
+  <meta charset="UTF-8">
+  <title>Emberon PNG Encoder/Decoder</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+  <style>
+    body {
+      font-family: monospace;
+      background: #0b1e3f;
+      color: #cce0ff;
+      text-align: center;
+      padding: 2rem;
+    }
+    h1 { color: #66aaff; }
+    #dropzone {
+      border: 2px dashed #66aaff;
+      padding: 2rem;
+      margin: 1rem auto;
+      width: 300px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    select, button {
+      margin: 1rem;
+      padding: 0.5rem 1rem;
+      background: #112244;
+      color: #cce0ff;
+      border: 1px solid #66aaff;
+      border-radius: 5px;
+    }
+    #output { margin-top: 1rem; white-space: pre-wrap; font-size: 0.9rem; }
+    a.download-link {
+      display: block;
+      margin-top: 1rem;
+      color: #66ffcc;
+    }
+  </style>
 </head>
 <body>
-<h1>Emberon PNG Encoder/Decoder</h1>
+  <h1>🌌 Emberon PNG Encoder/Decoder</h1>
 
-<label>Choose file to encode/decode:</label>
-<input type="file" id="fileInput">
+  <div id="dropzone">Drag & Drop file here<br>or click to choose</div>
+  <input type="file" id="fileInput" style="display:none">
 
-<label>Operation:</label>
-<select id="operation">
-  <option value="encode">Encode → PNG</option>
-  <option value="decode">Decode PNG → File</option>
-</select>
+  <div>
+    <select id="operation">
+      <option value="encode">Encode → PNG</option>
+      <option value="decode">Decode PNG → File</option>
+    </select>
+    <button id="runBtn">Run</button>
+  </div>
 
-<button id="runBtn">Run</button>
+  <div id="output"></div>
+  <a id="downloadLink" class="download-link" style="display:none">⬇ Download Result</a>
 
-<div id="output"></div>
-
-<!-- Embed Python code directly -->
-<script type="text/python" id="emberon-py">
-import sys
-from PIL import Image
-import lzma  # Will be installed dynamically
-
-def encode_file_to_png(input_path, output_path, scale=2, quality=6):
-    with open(input_path, "rb") as f:
-        data = f.read()
-    compressed = lzma.compress(data)
-    size = (len(compressed)**0.5).__ceil__()
-    img = Image.new("L", (size, size))
-    img.putdata(list(compressed) + [0]*(size*size - len(compressed)))
-    img.save(output_path, "PNG", compress_level=quality)
-
-def decode_png_to_file(input_path, output_path):
-    img = Image.open(input_path).convert("L")
-    data = bytes(img.getdata()).rstrip(b'\x00')
-    with open(output_path, "wb") as f:
-        f.write(lzma.decompress(data))
-</script>
-
-<script type="text/javascript">
+<script>
 let pyodideReady = false;
 let pyodide;
 
-async function initPyodide() {
+async function loadPyodideAndPackages() {
   pyodide = await loadPyodide();
-  await pyodide.loadPackage(["micropip"]);
-  // Install packages not in standard Pyodide
-  await pyodide.runPythonAsync(`
-import micropip
-await micropip.install("Pillow")
-await micropip.install("lzma")  # Required for your code
-  `);
-
-  // Write embedded Python code to FS
-  const pyCode = document.getElementById("emberon-py").textContent;
-  pyodide.FS.writeFile("emberon.py", pyCode);
-
+  await pyodide.loadPackage(["micropip", "pillow"]);
   pyodideReady = true;
   console.log("Pyodide ready!");
 }
 
-initPyodide();
+loadPyodideAndPackages();
+
+const pythonCode = `
+import os, math, zlib, hashlib, struct
+from PIL import Image
+
+MAGIC = b"EMBERON3"
+HEADER_PREFIX_FMT = ">8sBBQQHH"
+HEADER_PREFIX_SIZE = struct.calcsize(HEADER_PREFIX_FMT)
+HEADER_PAD_TO = 256
+COMP_NONE, COMP_ZLIB, COMP_ZSTD, COMP_LZMA = 0, 1, 2, 3
+
+def build_header(comp_method, orig_size, comp_data, filename, extension):
+    name_b = filename.encode("utf-8")
+    ext_b = extension.encode("utf-8")
+    sha256 = hashlib.sha256(f"{orig_size}:".encode() + comp_data).digest()
+    header = struct.pack(
+        HEADER_PREFIX_FMT,
+        MAGIC, comp_method, 0,
+        orig_size, len(comp_data),
+        len(name_b), len(ext_b)
+    ) + name_b + ext_b + sha256
+    # IMPORTANT: avoid embedding real NULs in the JS source; use \\0 so Python sees \\x00 at runtime
+    return header + b"\\0" * (HEADER_PAD_TO - len(header))
+
+def parse_header(header):
+    if len(header) < HEADER_PAD_TO:
+        raise ValueError("Header too small")
+    magic, comp_method, reserved, orig_size, comp_size, name_len, ext_len = struct.unpack(
+        HEADER_PREFIX_FMT, header[:HEADER_PREFIX_SIZE]
+    )
+    if magic != MAGIC:
+        raise AssertionError("Invalid file")
+    pos = HEADER_PREFIX_SIZE
+    name = header[pos:pos+name_len].decode("utf-8"); pos += name_len
+    ext  = header[pos:pos+ext_len].decode("utf-8");  pos += ext_len
+    sha256 = header[pos:pos+32]
+    return comp_method, orig_size, comp_size, name, ext, sha256
+
+def _choose_dimensions(num_pixels):
+    # square-ish, minimal area
+    w = int(math.ceil(math.sqrt(num_pixels)))
+    h = int(math.ceil(num_pixels / w))
+    return w, h
+
+def encode_file_to_png(input_path, output_path):
+    with open(input_path, "rb") as f:
+        raw = f.read()
+
+    # zlib compression for web build (matches COMP_ZLIB)
+    comp_data = zlib.compress(raw)
+
+    base = os.path.splitext(os.path.basename(input_path))[0]
+    ext  = os.path.splitext(input_path)[1][1:]
+    header = build_header(COMP_ZLIB, len(raw), comp_data, base, ext)
+
+    payload = header + comp_data
+
+    # Pad to RGBA pixel boundary WITHOUT using \\x00 in the source string
+    pad4 = (-len(payload)) % 4
+    if pad4:
+        payload += bytes((0,)) * pad4
+
+    num_pixels = len(payload) // 4
+    w, h = _choose_dimensions(num_pixels)
+    total_px = w * h
+    extra = total_px - num_pixels
+    if extra:
+        payload += bytes((0,)) * (extra * 4)
+
+    # Build RGBA image directly from bytes
+    img = Image.frombytes("RGBA", (w, h), payload)
+    img.save(output_path, "PNG")
+
+def decode_png_to_file(input_path, output_path):
+    img = Image.open(input_path)
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+
+    raw = img.tobytes("raw", "RGBA")
+    header = raw[:HEADER_PAD_TO]
+    comp_method, orig_size, comp_size, name, ext, sha256 = parse_header(header)
+
+    comp_start = HEADER_PAD_TO
+    comp_end = comp_start + comp_size
+    if comp_end > len(raw):
+        raise ValueError("Truncated payload")
+    comp_data = raw[comp_start:comp_end]
+
+    # Integrity check
+    if hashlib.sha256(f"{orig_size}:".encode() + comp_data).digest() != sha256:
+        raise ValueError("SHA256 mismatch")
+
+    if comp_method == COMP_ZLIB:
+        data = zlib.decompress(comp_data)
+    elif comp_method == COMP_NONE:
+        data = comp_data
+    else:
+        # zstd/lzma not provided in this web build
+        raise ValueError("Unsupported compression method in web build")
+
+    with open(output_path, "wb") as f:
+        f.write(data)
+`;
+
 
 document.getElementById("runBtn").addEventListener("click", async () => {
   if (!pyodideReady) return alert("Python not ready yet!");
-
   const fileInput = document.getElementById("fileInput");
-  if (!fileInput.files.length) return alert("Please select a file!");
+  if (!fileInput.files.length) return alert("Select a file first!");
+  const op = document.getElementById("operation").value;
   const file = fileInput.files[0];
-  const buffer = await file.arrayBuffer();
-  pyodide.FS.writeFile(file.name, new Uint8Array(buffer));
+  const buf = await file.arrayBuffer();
+  pyodide.FS.writeFile(file.name, new Uint8Array(buf));
 
-  const operation = document.getElementById("operation").value;
-  let cmd = '';
-  if (operation === 'encode') {
-    cmd = `import emberon; emberon.encode_file_to_png("${file.name}", "${file.name}.png", 2, 6)`;
+  await pyodide.runPythonAsync(pythonCode);
+  let outName = op === "encode" 
+   ? file.name + ".png" 
+   : "decoded_" + file.name.replace(/\.png$/, "");
+
+  let cmd;
+  if (op === "encode") {
+    cmd = `encode_file_to_png("${file.name}", "${outName}")`;
   } else {
-    cmd = `import emberon; emberon.decode_png_to_file("${file.name}", "decoded_${file.name}")`;
+    cmd = `decode_png_to_file("${file.name}", "${outName}")`;
   }
 
   try {
     await pyodide.runPythonAsync(cmd);
-    document.getElementById("output").textContent = `${operation} finished!\nCheck Pyodide FS for output file.`;
+    const data = pyodide.FS.readFile(outName);
+    const blob = new Blob([data], {type: op==="encode"?"image/png":"application/octet-stream"});
+    const url = URL.createObjectURL(blob);
+    const link = document.getElementById("downloadLink");
+    link.href = url;
+    link.download = outName;
+    link.style.display = "block";
+    link.textContent = "⬇ Download " + outName;
+    document.getElementById("output").textContent = op + " successful!";
   } catch (err) {
-    document.getElementById("output").textContent = "Error: " + err;
+    document.getElementById("output").textContent = "❌ Error: " + err;
   }
+});
+
+// Drag & drop
+const dz = document.getElementById("dropzone");
+dz.addEventListener("click", ()=>document.getElementById("fileInput").click());
+dz.addEventListener("dragover", e=>{e.preventDefault(); dz.style.background="#112244";});
+dz.addEventListener("dragleave", e=>{dz.style.background="";});
+dz.addEventListener("drop", e=>{
+  e.preventDefault();
+  dz.style.background="";
+  document.getElementById("fileInput").files = e.dataTransfer.files;
 });
 </script>
 </body>
