@@ -125,23 +125,23 @@ def encode_file_to_png(input_path, output_path):
     ext  = os.path.splitext(input_path)[1][1:]
     header = build_header(COMP_ZLIB, len(raw), comp_data, base, ext)
     payload = header + comp_data
-    pad4 = (-len(payload)) % 4
-    if pad4:
-        payload += bytes((0,)) * pad4
-    num_pixels = len(payload) // 4
+    pad3 = (-len(payload)) % 3
+    if pad3:
+        payload += bytes((0,)) * pad3
+    num_pixels = len(payload) // 3
     w, h = _choose_dimensions(num_pixels)
     total_px = w * h
     extra = total_px - num_pixels
     if extra:
-        payload += bytes((0,)) * (extra * 4)
-    img = Image.frombytes("RGBA", (w, h), payload)
+        payload += bytes((0,)) * (extra * 3)
+    img = Image.frombytes("RGB", (w, h), payload)
     img.save(output_path, "PNG")
 
 def decode_png_to_file(input_path, output_path=None):
     img = Image.open(input_path)
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
-    raw = img.tobytes("raw", "RGBA")
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    raw = img.tobytes("raw", "RGB")
     header = raw[:HEADER_PAD_TO]
     comp_method, orig_size, comp_size, name, ext, sha256 = parse_header(header)
     comp_start = HEADER_PAD_TO
