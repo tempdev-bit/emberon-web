@@ -19,7 +19,7 @@ Everything runs **offline in your browser** using Python (via Pyodide + Pillow).
 ---
 
 ## 🛡️ Try It
-1. Open (tbd) in your browser.  
+1. Open (https://emberon.pages.dev) in your browser.  
 2. Drag & drop a file.  
 3. Choose **Encode → PNG** or **Decode PNG → File**.  
 4. Click **Run** and download your result.  
