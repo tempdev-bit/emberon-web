@@ -7,19 +7,28 @@
   <style>
     body {
       font-family: monospace;
-      background: #0b1e3f;
+      background: #071224;
       color: #cce0ff;
       text-align: center;
       padding: 2rem;
     }
-    h1 { color: #66aaff; }
+    h1 { color: #aacffc; }
     #dropzone {
-      border: 2px dashed #66aaff;
+      border: 2px dashed #2d6bb6;
       padding: 2rem;
       margin: 1rem auto;
       width: 300px;
       border-radius: 10px;
       cursor: pointer;
+    }
+    h1 {
+      font-family: monospace;
+      color: #92c3ff;
+    }
+    .small-note {
+      font-size: 0.8rem;
+      color: #88aadd;
+      margin-top: -0.5rem;
     }
     select, button {
       margin: 1rem;
@@ -38,7 +47,8 @@
   </style>
 </head>
 <body>
-  <h1>🌌 Emberon PNG Encoder/Decoder</h1>
+  <h1> 🦕 Emberon PNG Encoder/Decoder</h1>
+  <div class="small-note">Only supports ZLIB compression</div>
 
   <div id="dropzone">Drag & Drop file here<br>or click to choose</div>
   <input type="file" id="fileInput" style="display:none">
@@ -64,7 +74,6 @@ async function loadPyodideAndPackages() {
   pyodideReady = true;
   console.log("Pyodide ready!");
 }
-
 loadPyodideAndPackages();
 
 const pythonCode = `
@@ -87,7 +96,6 @@ def build_header(comp_method, orig_size, comp_data, filename, extension):
         orig_size, len(comp_data),
         len(name_b), len(ext_b)
     ) + name_b + ext_b + sha256
-    # IMPORTANT: avoid embedding real NULs in the JS source; use \\0 so Python sees \\x00 at runtime
     return header + b"\\0" * (HEADER_PAD_TO - len(header))
 
 def parse_header(header):
@@ -105,7 +113,6 @@ def parse_header(header):
     return comp_method, orig_size, comp_size, name, ext, sha256
 
 def _choose_dimensions(num_pixels):
-    # square-ish, minimal area
     w = int(math.ceil(math.sqrt(num_pixels)))
     h = int(math.ceil(num_pixels / w))
     return w, h
@@ -113,63 +120,49 @@ def _choose_dimensions(num_pixels):
 def encode_file_to_png(input_path, output_path):
     with open(input_path, "rb") as f:
         raw = f.read()
-
-    # zlib compression for web build (matches COMP_ZLIB)
     comp_data = zlib.compress(raw)
-
     base = os.path.splitext(os.path.basename(input_path))[0]
     ext  = os.path.splitext(input_path)[1][1:]
     header = build_header(COMP_ZLIB, len(raw), comp_data, base, ext)
-
     payload = header + comp_data
-
-    # Pad to RGBA pixel boundary WITHOUT using \\x00 in the source string
     pad4 = (-len(payload)) % 4
     if pad4:
         payload += bytes((0,)) * pad4
-
     num_pixels = len(payload) // 4
     w, h = _choose_dimensions(num_pixels)
     total_px = w * h
     extra = total_px - num_pixels
     if extra:
         payload += bytes((0,)) * (extra * 4)
-
-    # Build RGBA image directly from bytes
     img = Image.frombytes("RGBA", (w, h), payload)
     img.save(output_path, "PNG")
 
-def decode_png_to_file(input_path, output_path):
+def decode_png_to_file(input_path, output_path=None):
     img = Image.open(input_path)
     if img.mode != "RGBA":
         img = img.convert("RGBA")
-
     raw = img.tobytes("raw", "RGBA")
     header = raw[:HEADER_PAD_TO]
     comp_method, orig_size, comp_size, name, ext, sha256 = parse_header(header)
-
     comp_start = HEADER_PAD_TO
     comp_end = comp_start + comp_size
     if comp_end > len(raw):
         raise ValueError("Truncated payload")
     comp_data = raw[comp_start:comp_end]
-
-    # Integrity check
     if hashlib.sha256(f"{orig_size}:".encode() + comp_data).digest() != sha256:
         raise ValueError("SHA256 mismatch")
-
     if comp_method == COMP_ZLIB:
         data = zlib.decompress(comp_data)
     elif comp_method == COMP_NONE:
         data = comp_data
     else:
-        # zstd/lzma not provided in this web build
         raise ValueError("Unsupported compression method in web build")
-
+    if output_path is None:
+        output_path = f"{name}.{ext}" if ext else name
     with open(output_path, "wb") as f:
         f.write(data)
+    return output_path
 `;
-
 
 document.getElementById("runBtn").addEventListener("click", async () => {
   if (!pyodideReady) return alert("Python not ready yet!");
@@ -181,19 +174,19 @@ document.getElementById("runBtn").addEventListener("click", async () => {
   pyodide.FS.writeFile(file.name, new Uint8Array(buf));
 
   await pyodide.runPythonAsync(pythonCode);
-  let outName = op === "encode" 
-   ? file.name + ".png" 
-   : "decoded_" + file.name.replace(/\.png$/, "");
 
-  let cmd;
+  let cmd, outName;
   if (op === "encode") {
+    outName = file.name + ".png";
     cmd = `encode_file_to_png("${file.name}", "${outName}")`;
+    await pyodide.runPythonAsync(cmd);
   } else {
-    cmd = `decode_png_to_file("${file.name}", "${outName}")`;
+    // run decode, let Python pick auto extension
+    cmd = `decode_png_to_file("${file.name}")`;
+    outName = await pyodide.runPythonAsync(cmd); // returns actual written path
   }
 
   try {
-    await pyodide.runPythonAsync(cmd);
     const data = pyodide.FS.readFile(outName);
     const blob = new Blob([data], {type: op==="encode"?"image/png":"application/octet-stream"});
     const url = URL.createObjectURL(blob);
@@ -221,4 +214,3 @@ dz.addEventListener("drop", e=>{
 </script>
 </body>
 </html>
-
